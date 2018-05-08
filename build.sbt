@@ -8,7 +8,7 @@ crossScalaVersions := Seq("2.10.6", "2.11.8")
 
 spName := "databricks/spark-avro"
 
-sparkVersion := "2.1.0"
+sparkVersion := "2.4.0-SNAPSHOT"
 
 val testSparkVersion = settingKey[String]("The version of Spark to test against.")
 
@@ -66,6 +66,8 @@ coverageHighlighting := {
   if (scalaBinaryVersion.value == "2.10") false
   else true
 }
+
+resolvers += Resolver.mavenLocal
 
 EclipseKeys.eclipseOutput := Some("target/eclipse")
 
