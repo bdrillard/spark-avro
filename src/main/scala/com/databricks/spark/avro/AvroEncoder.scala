@@ -464,7 +464,7 @@ private object AvroTypeInference {
         keyNullable = false,
         valueType,
         serializerFor(_, valueSchema),
-        valueNullable = true)
+        valueNullable = false)
     }
 
     if (!ObjectType._isInstanceOf(inputObject.dataType)) {
