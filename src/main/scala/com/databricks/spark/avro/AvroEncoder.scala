@@ -32,11 +32,9 @@ import org.apache.avro.reflect.ReflectData
 import org.apache.avro.specific.SpecificRecord
 
 import org.apache.spark.sql.Encoder
-import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.{GetColumnByOrdinal, UnresolvedAttribute, UnresolvedExtractValue}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode, JavaCode}
 import org.apache.spark.sql.catalyst.expressions.objects._
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
 import org.apache.spark.sql.types._
@@ -378,13 +376,13 @@ private object AvroTypeInference {
         val args = avroSchema.getFields.asScala.map { field =>
           val position = Literal(field.pos)
           val argument = deserializerFor(field.schema, Some(addToPath(field.name)))
-          (position, argument)
-        }.toList
+          ("put", position :: argument :: Nil)
+        }
 
         val recordClass = Option(ReflectData.get.getClass(avroSchema))
           .getOrElse(classOf[GenericData.Record])
         val objectType = ObjectType(recordClass)
-        val newInstance = if (recordClass == classOf[GenericData.Record]) {
+        val result = if (recordClass == classOf[GenericData.Record]) {
           NewInstance(
             recordClass,
             Invoke(
@@ -394,17 +392,14 @@ private object AvroTypeInference {
               "value",
               ObjectType(classOf[Schema]),
               Nil) :: Nil,
-            objectType)
+            objectType,
+            args)
         } else {
           NewInstance(
             recordClass,
             Nil,
-            objectType)
-        }
-
-        val result = args.foldLeft(newInstance: InvokeLike) {
-          case (instance, (positionLiteral, argument)) =>
-            Invoke(instance, "put", instance.dataType, positionLiteral :: argument :: Nil)
+            objectType,
+            args)
         }
 
         if (path.nonEmpty) {
@@ -576,37 +571,6 @@ private object AvroTypeInference {
            */
           throw new IncompatibleSchemaException("Null type should only be used in Union types")
       }
-    }
-  }
-
-  /**
-   * Casts an expression to another object.
-   *
-   * @param value The value to cast
-   * @param resultType The type the value should be cast to.
-   */
-  private case class ObjectCast(
-    value: Expression,
-    resultType: DataType) extends Expression with NonSQLExpression {
-
-    override def nullable: Boolean = value.nullable
-    override def dataType: DataType = resultType
-    override def children: Seq[Expression] = value :: Nil
-
-    override def eval(input: InternalRow): Any =
-      throw new UnsupportedOperationException("Only code-generated evaluation is supported.")
-
-    override protected def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
-
-      val javaType = JavaCode.defaultLiteral(resultType)
-      val obj = value.genCode(ctx)
-
-      val code = s"""
-         ${obj.code}
-         final $javaType ${ev.value} = ($javaType) ${obj.value};
-       """
-
-      ev.copy(code = code, isNull = obj.isNull)
     }
   }
 }
